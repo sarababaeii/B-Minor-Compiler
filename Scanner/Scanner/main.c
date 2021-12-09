@@ -10,7 +10,7 @@
 #include <ctype.h>
 #include <string.h>
 
-//MARK: Constants and Global Variables
+//MARK: Constants
 const int MAX_N = 500;
 const int KYEWORDS_NUM = 15;
 const char KEYWORDS[KYEWORDS_NUM][MAX_N] = {
@@ -42,38 +42,33 @@ typedef struct {
 Address *current_address;
 int last_column_number = 0;
 
-
+//MARK: Function Prototypes
 Address* create_address(int line, int column);
-Token* create_token(TokenType type, char value[], Address address);
-int addresses_are_equal(Address *address1, Address *address2);
+Token* scan_next_token(FILE*);
+Token* scan_string_token(FILE*);
+Token* scan_character_token(FILE*);
+Token* scan_integer_token(char, FILE*);
+Token* scan_keyword_or_identifier_token(char, FILE*);
+Token* scan_prefixable_operator_token(char, char, FILE*);
+Token* create_token(TokenType, char*, Address);
+Token* create_operator_token(char*, Address );
+Token* create_simple_operator_token(char*);
+Token* create_keyword_or_identifier_token(char*, Address);
+FILE* open_file(char*, char*);
+void scan_tokens(char*);
+void print_token(Token*);
+void prepare_next_token(FILE*);
+void skip_whitespaces(FILE*);
+void skip_comments(FILE*);
+void skip_c_style_comment(int, FILE*);
+void skip_cpp_style_comment(int, FILE*);
+void put_back_last_ascii(int, FILE*);
+int get_next_ascii(FILE*);
+int is_keyword(char*);
+int addresses_are_equal(Address*, Address*);
+char* get_token_description(TokenType);
 
-int get_next_ascii(FILE *file_pointer);
-void put_back_last_ascii(int c, FILE *file_pointer);
-FILE* open_file(char file_name[], char operation[]);
-
-void skip_cpp_style_comments(int d, FILE *file_pointer);
-void skip_c_style_comments(int d, FILE *file_pointer);
-void skip_comments(FILE *file_pointer);
-void skip_whitespaces(FILE *file_pointer);
-void prepare_next_token(FILE *file_pointer);
-
-Token* create_operator_token(char value[], Address address);
-Token* create_simple_operator_token(char value[]);
-Token* scan_prefixable_operator_token(char extracted_char, char expected_char, FILE *file_pointer);
-
-int is_keyword(char str[]);
-Token* create_keyword_or_identifier_token(char value[], Address address);
-Token* scan_keyword_or_identifier_token(char c, FILE *file_pointer);
-
-Token* scan_integer_token(char c, FILE *file_pointer);
-Token* scan_character_token(FILE *file_pointer);
-Token* scan_string_token(FILE *file_pointer);
-
-Token* scan_next_token(FILE *fp);
-void print_token(Token *t);
-char* get_token_description(TokenType t);
-void scan_tokens(char file_name[]);
-
+//MARK: Main
 int main(int argc, const char * argv[]) {
     printf("Hello, World!\n");
     current_address = create_address(1, 1);
@@ -86,7 +81,7 @@ int main(int argc, const char * argv[]) {
 FILE* open_file(char file_name[], char operation[]) {
     FILE *fp = fopen(file_name, operation);
     if(!fp) {
-        perror("File opening failed");
+        perror("File opening failed.");
         exit(1);
     }
     return fp;
@@ -115,6 +110,16 @@ void put_back_last_ascii(int c, FILE *file_pointer) {
 }
 
 //MARK: Type Functions
+Address* create_address(int line, int col) {
+    Address *address = malloc(sizeof(Address));
+    if (address == NULL) {
+        return NULL;
+    }
+    address->line = line;
+    address->column = col;
+    return address;
+}
+
 Token* create_token(TokenType type, char value[], Address address) {
     Token *t = malloc(sizeof(Token));
     if (t == NULL) {
@@ -126,23 +131,8 @@ Token* create_token(TokenType type, char value[], Address address) {
     return t;
 }
 
-Address* create_address(int line, int column) {
-    Address *address = malloc(sizeof(Address));
-    if (address == NULL) {
-        return NULL;
-    }
-    address->line = line;
-    address->column = column;
-    return address;
-}
-
 int addresses_are_equal(Address *address1, Address *address2) {
     return (address1->line == address2->line && address1->column == address2->column);
-}
-
-void print_token(Token *t) {
-    printf("Token: (type: %s, value: %s, line: %d, col: %d)\n",
-           get_token_description(t->type), t->value, t->address.line, t->address.column);
 }
 
 char* get_token_description(TokenType t) {
@@ -168,78 +158,83 @@ char* get_token_description(TokenType t) {
     }
 }
 
-// Skipping Comments and Whitespaces
-void prepare_next_token(FILE *file_pointer) {
+void print_token(Token *t) {
+    printf("Token: (type: %s, value: %s, line: %d, col: %d)\n",
+           get_token_description(t->type), t->value, t->address.line, t->address.column);
+}
+
+//MARK: Skipping Comments and Whitespaces
+void prepare_next_token(FILE *fp) {
     Address last_address = *current_address, new_address = *current_address;
     do {
-        skip_whitespaces(file_pointer);
-        skip_comments(file_pointer);
+        skip_whitespaces(fp);
+        skip_comments(fp);
         last_address = new_address;
         new_address = *current_address;
      } while (!addresses_are_equal(&last_address, &new_address));
 }
 
-void skip_whitespaces(FILE *file_pointer) {
-    int c = get_next_ascii(file_pointer);
+void skip_whitespaces(FILE *fp) {
+    int c = get_next_ascii(fp);
     while ((isspace(c) || c == '\n') && c != EOF) {
-        c = get_next_ascii(file_pointer);
+        c = get_next_ascii(fp);
     }
-    put_back_last_ascii(c, file_pointer);
+    put_back_last_ascii(c, fp);
 }
 
-void skip_comments(FILE *file_pointer) {
-    int c = get_next_ascii(file_pointer);
+void skip_comments(FILE *fp) {
+    int c = get_next_ascii(fp);
     if (c == '/') {
-        int d = get_next_ascii(file_pointer);
+        int d = get_next_ascii(fp);
         if (d == '/') {
-            skip_cpp_style_comments(d, file_pointer);
+            skip_cpp_style_comment(d, fp);
             return;
-        } else if (d == '*') {
-            skip_c_style_comments(d, file_pointer);
-            return;
-        } else {
-            put_back_last_ascii(d, file_pointer);
         }
+        if (d == '*') {
+            skip_c_style_comment(d, fp);
+            return;
+        }
+        put_back_last_ascii(d, fp);
     }
-    put_back_last_ascii(c, file_pointer);
+    put_back_last_ascii(c, fp);
 }
 
-void skip_c_style_comments(int d, FILE *file_pointer) { /* */
-    int e = get_next_ascii(file_pointer);
+void skip_c_style_comment(int d, FILE *fp) { /* */
+    int e = get_next_ascii(fp);
     while ((d != '*' || e != '/') && e != EOF) {
         d = e;
-        e = get_next_ascii(file_pointer);
+        e = get_next_ascii(fp);
     }
 }
 
-void skip_cpp_style_comments(int d, FILE *file_pointer) { //
+void skip_cpp_style_comment(int d, FILE *fp) { //
     while (d != '\n' && d != EOF) {
-        d = get_next_ascii(file_pointer);
+        d = get_next_ascii(fp);
     }
 }
 
-// Creating Operator Tokens
-Token* create_operator_token(char value[], Address address) {
-    return create_token(OPERATOR, value, address);
+// MARK: Operator Tokens
+Token* create_operator_token(char value[], Address add) {
+    return create_token(OPERATOR, value, add);
 }
 
 Token* create_simple_operator_token(char value[]) {
     return create_operator_token(value, *current_address);
 }
 
-Token* scan_prefixable_operator_token(char extracted_char, char expected_char, FILE *file_pointer) {
+Token* scan_prefixable_operator_token(char extracted_char, char expected_char, FILE *fp) {
     Address address = *current_address;
     char value[3] = {extracted_char, 0, 0};
-    int d = get_next_ascii(file_pointer);
+    int d = get_next_ascii(fp);
     if (d == expected_char) {
         value[1] = d;
         return create_operator_token(value, address);
     }
-    put_back_last_ascii(d, file_pointer);
+    put_back_last_ascii(d, fp);
     return create_simple_operator_token(value);
 }
 
-// Creating Keyword and Identifier Tokens
+//MARK: Keyword and Identifier Tokens
 int is_keyword(char str[]) {
     for (int i = 0; i < KYEWORDS_NUM; i++) {
         if (strcmp(KEYWORDS[i], str) == 0) {
@@ -249,38 +244,38 @@ int is_keyword(char str[]) {
     return 0;
 }
 
-Token* create_keyword_or_identifier_token(char value[], Address address) {
+Token* create_keyword_or_identifier_token(char value[], Address add) {
     if (is_keyword(value)) {
-        return create_token(KEYWORD, value, address);
+        return create_token(KEYWORD, value, add);
     }
-    return create_token(IDENTIFIER, value, address);
+    return create_token(IDENTIFIER, value, add);
 }
 
-Token* scan_keyword_or_identifier_token(char c, FILE *file_pointer) {
-    Address address = *current_address;
+Token* scan_keyword_or_identifier_token(char c, FILE *fp) {
+    Address add = *current_address;
     char value[MAX_N];
     int i;
     for (i = 0; isalnum(c) || c == '_'; i++) {
         value[i] = c;
-        c = get_next_ascii(file_pointer);
+        c = get_next_ascii(fp);
     }
-    put_back_last_ascii(c, file_pointer);
+    put_back_last_ascii(c, fp);
     value[i] = 0;
-    return create_keyword_or_identifier_token(value, address);
+    return create_keyword_or_identifier_token(value, add);
 }
 
-// Creating Integer, String and Character Tokens
-Token* scan_integer_token(char c, FILE *file_pointer) {
-    Address address = *current_address;
+//MARK: Integer, String and Character Tokens
+Token* scan_integer_token(char c, FILE *fp) {
+    Address add = *current_address;
     char value[MAX_N];
     int i;
     for (i = 0; isdigit(c); i++) {
         value[i] = c;
-        c = get_next_ascii(file_pointer);
+        c = get_next_ascii(fp);
     }
-    put_back_last_ascii(c, file_pointer);
+    put_back_last_ascii(c, fp);
     value[i] = 0;
-    return create_token(INTEGER, value, address);
+    return create_token(INTEGER, value, add);
 }
 
 Token* scan_character_token(FILE *file_pointer) { //TODO: Check, \'s
@@ -310,7 +305,7 @@ Token* scan_string_token(FILE *file_pointer) { //TODO: Check
     return create_token(STRING, value, address);
 }
 
-// Scanning
+//MARK: Scanning
 void scan_tokens(char file_name[]) {
     FILE *fp = open_file(file_name, "r");
     Token *t = scan_next_token(fp);
@@ -321,14 +316,11 @@ void scan_tokens(char file_name[]) {
     fclose(fp);
 }
 
-
 Token* scan_next_token(FILE *fp) {
     prepare_next_token(fp);
     int c = get_next_ascii(fp);
-    printf("%c\n", c);
-    
-    if (c == ';' || c == ':' || c == ',' || c == '(' || c == ')' || c == '[' || c == ']' ||
-        c == '{' || c == '}' || c == '*' || c == '/' || c == '%' || c == '^') {
+    if (c == '(' || c == ')' || c == '[' || c == ']' || c == '{' || c == '}' ||
+        c == ';' || c == ':' || c == ',' || c == '*' || c == '/' || c == '%' || c == '^') {
         char value[] = {c, 0};
         return create_simple_operator_token(value);
     }
@@ -352,4 +344,3 @@ Token* scan_next_token(FILE *fp) {
     }
     return NULL;
 }
-
