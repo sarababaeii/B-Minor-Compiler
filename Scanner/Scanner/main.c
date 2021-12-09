@@ -17,7 +17,8 @@ const char KEYWORDS[KYEWORDS_NUM][MAX_N] = {
     "array", "boolean", "char", "else", "false", "for", "function", "if",
     "integer", "print", "return", "string", "true", "void", "while"
 };
-char input_file_name[] = "/Users/mackbook/Desktop/Sara/Study/Programming/CS 97/1400-1/Compiler/Homework/HW-02/input1.txt";
+char input_file[] = "/Users/mackbook/Desktop/Sara/Study/Programming/CS 97/1400-1/Compiler/Homework/HW-02/input1.txt";
+char output_file[] = "/Users/mackbook/Desktop/Sara/Study/Programming/CS 97/1400-1/Compiler/Homework/HW-02/ouput1.txt";
 
 //MARK: Type Definitions
 typedef enum {
@@ -40,11 +41,18 @@ typedef struct {
     Address address;
 } Token;
 
+typedef struct{
+    Token *array;
+    size_t used;
+    size_t size;
+} TokenArray;
+
 Address *current_address;
 int last_column_number = 0;
 
 //MARK: Function Prototypes
 Address* create_address(int line, int column);
+TokenArray* scan_tokens(char*, char*);
 Token* scan_next_token(FILE*);
 Token* scan_integer_token(char, FILE*);
 Token* scan_string_or_char_token(char, FILE*);
@@ -55,9 +63,11 @@ Token* create_operator_token(char*, Address );
 Token* create_simple_operator_token(char*);
 Token* create_keyword_or_identifier_token(char*, Address);
 Token* create_string_or_char_token(char, char*, Address);
+Token get_token_from_array(TokenArray*, int);
 FILE* open_file(char*, char*);
-void scan_tokens(char*);
-void print_token(Token*);
+void insert_to_token_array(TokenArray*, Token);
+void free_token_array(TokenArray*);
+void print_token(Token*, FILE*);
 void prepare_next_token(FILE*);
 void skip_whitespaces(FILE*);
 void skip_comments(FILE*);
@@ -69,10 +79,19 @@ int is_keyword(char*);
 int addresses_are_equal(Address*, Address*);
 char* get_token_description(TokenType);
 
+void print_token_stndrd(Token t) {
+    printf("Token: (\n\ttype: %s, \n\tvalue: %s, \n\tline: %d, col: %d)\n",
+           get_token_description(t.type), t.value, t.address.line, t.address.column);
+}
+
 //MARK: Main
 int main(int argc, const char * argv[]) {
     printf("Hello, World!\n");
-    scan_tokens(input_file_name);
+    TokenArray *tokens;
+    tokens = scan_tokens(input_file, output_file);
+    for (int i = 0; i < tokens->used; i++) {
+        print_token_stndrd(get_token_from_array(tokens, i));
+    }
     return 0;
 }
 
@@ -130,6 +149,14 @@ Token* create_token(TokenType type, char value[], Address address) {
     return t;
 }
 
+TokenArray* create_token_array(size_t initial_size) {
+    TokenArray *a = malloc(sizeof(TokenArray));
+    a->array = malloc(initial_size * sizeof(Token));
+    a->used = 0;
+    a->size = initial_size;
+    return a;
+}
+
 int addresses_are_equal(Address *add1, Address *add2) {
     return (add1->line == add2->line && add1->column == add2->column);
 }
@@ -157,9 +184,27 @@ char* get_token_description(TokenType t) {
     }
 }
 
-void print_token(Token *t) {
-    printf("Token: (\n\ttype: %s, \n\tvalue: %s, \n\tline: %d, col: %d)\n",
+void print_token(Token *t, FILE *fp) {
+    fprintf(fp, "Token: (\n\ttype: %s, \n\tvalue: %s, \n\tline: %d, col: %d)\n",
            get_token_description(t->type), t->value, t->address.line, t->address.column);
+}
+
+void insert_to_token_array(TokenArray *a, Token t) {
+    if (a->used == a->size) {
+        a->size *= 2;
+        a->array = realloc(a->array, a->size * sizeof(Token));
+    }
+    a->array[a->used++] = t;
+}
+
+void free_token_array(TokenArray *a) {
+    free(a->array);
+    a->array = NULL;
+    a->used = a->size = 0;
+}
+
+Token get_token_from_array(TokenArray *a, int index) {
+    return a->array[index];
 }
 
 //MARK: Skipping Comments and Whitespaces
@@ -298,15 +343,20 @@ Token* scan_string_or_char_token(char sign, FILE *fp) { //TODO: \0
 }
 
 //MARK: Scanning
-void scan_tokens(char file_name[]) {
-    FILE *fp = open_file(file_name, "r");
+TokenArray* scan_tokens(char input_file_name[], char output_file_name[]) {
+    FILE *fp_in = open_file(input_file_name, "r");
+    FILE *fp_out = open_file(output_file_name, "w");
+    TokenArray *a = create_token_array(10);
     current_address = create_address(1, 1);
-    Token *t = scan_next_token(fp);
+    Token *t = scan_next_token(fp_in);
     while (t != NULL) {
-        print_token(t);
-        t = scan_next_token(fp);
+        insert_to_token_array(a, *t);
+        print_token(t, fp_out);
+        t = scan_next_token(fp_in);
     }
-    fclose(fp);
+    fclose(fp_in);
+    fclose(fp_out);
+    return a;
 }
 
 Token* scan_next_token(FILE *fp) {
