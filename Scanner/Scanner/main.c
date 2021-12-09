@@ -17,6 +17,7 @@ const char KEYWORDS[KYEWORDS_NUM][MAX_N] = {
     "array", "boolean", "char", "else", "false", "for", "function", "if",
     "integer", "print", "return", "string", "true", "void", "while"
 };
+char input_file_name[] = "/Users/mackbook/Desktop/Sara/Study/Programming/CS 97/1400-1/Compiler/Homework/HW-02/input1.txt";
 
 //MARK: Type Definitions
 typedef enum {
@@ -45,15 +46,15 @@ int last_column_number = 0;
 //MARK: Function Prototypes
 Address* create_address(int line, int column);
 Token* scan_next_token(FILE*);
-Token* scan_string_token(FILE*);
-Token* scan_character_token(FILE*);
 Token* scan_integer_token(char, FILE*);
+Token* scan_string_or_char_token(char, FILE*);
 Token* scan_keyword_or_identifier_token(char, FILE*);
 Token* scan_prefixable_operator_token(char, char, FILE*);
 Token* create_token(TokenType, char*, Address);
 Token* create_operator_token(char*, Address );
 Token* create_simple_operator_token(char*);
 Token* create_keyword_or_identifier_token(char*, Address);
+Token* create_string_or_char_token(char, char*, Address);
 FILE* open_file(char*, char*);
 void scan_tokens(char*);
 void print_token(Token*);
@@ -71,9 +72,7 @@ char* get_token_description(TokenType);
 //MARK: Main
 int main(int argc, const char * argv[]) {
     printf("Hello, World!\n");
-    current_address = create_address(1, 1);
-    scan_tokens("/Users/mackbook/Desktop/Sara/Study/Programming/CS 97/1400-1/Compiler/Homework/HW-02/input1.txt");
-    
+    scan_tokens(input_file_name);
     return 0;
 }
 
@@ -87,8 +86,8 @@ FILE* open_file(char file_name[], char operation[]) {
     return fp;
 }
 
-int get_next_ascii(FILE *file_pointer) {
-    int c = fgetc(file_pointer);
+int get_next_ascii(FILE *fp) {
+    int c = fgetc(fp);
     if (c == '\n') {
         current_address->line++;
         last_column_number = current_address->column;
@@ -99,8 +98,8 @@ int get_next_ascii(FILE *file_pointer) {
     return c;
 }
 
-void put_back_last_ascii(int c, FILE *file_pointer) {
-    ungetc(c, file_pointer);
+void put_back_last_ascii(int c, FILE *fp) {
+    ungetc(c, fp);
     if (c == '\n') {
         current_address->line--;
         current_address->column = last_column_number;
@@ -131,8 +130,8 @@ Token* create_token(TokenType type, char value[], Address address) {
     return t;
 }
 
-int addresses_are_equal(Address *address1, Address *address2) {
-    return (address1->line == address2->line && address1->column == address2->column);
+int addresses_are_equal(Address *add1, Address *add2) {
+    return (add1->line == add2->line && add1->column == add2->column);
 }
 
 char* get_token_description(TokenType t) {
@@ -159,7 +158,7 @@ char* get_token_description(TokenType t) {
 }
 
 void print_token(Token *t) {
-    printf("Token: (type: %s, value: %s, line: %d, col: %d)\n",
+    printf("Token: (\n\ttype: %s, \n\tvalue: %s, \n\tline: %d, col: %d)\n",
            get_token_description(t->type), t->value, t->address.line, t->address.column);
 }
 
@@ -214,12 +213,12 @@ void skip_cpp_style_comment(int d, FILE *fp) { //
 }
 
 // MARK: Operator Tokens
-Token* create_operator_token(char value[], Address add) {
-    return create_token(OPERATOR, value, add);
+Token* create_operator_token(char val[], Address add) {
+    return create_token(OPERATOR, val, add);
 }
 
-Token* create_simple_operator_token(char value[]) {
-    return create_operator_token(value, *current_address);
+Token* create_simple_operator_token(char val[]) {
+    return create_operator_token(val, *current_address);
 }
 
 Token* scan_prefixable_operator_token(char extracted_char, char expected_char, FILE *fp) {
@@ -244,11 +243,11 @@ int is_keyword(char str[]) {
     return 0;
 }
 
-Token* create_keyword_or_identifier_token(char value[], Address add) {
-    if (is_keyword(value)) {
-        return create_token(KEYWORD, value, add);
+Token* create_keyword_or_identifier_token(char val[], Address add) {
+    if (is_keyword(val)) {
+        return create_token(KEYWORD, val, add);
     }
-    return create_token(IDENTIFIER, value, add);
+    return create_token(IDENTIFIER, val, add);
 }
 
 Token* scan_keyword_or_identifier_token(char c, FILE *fp) {
@@ -278,36 +277,30 @@ Token* scan_integer_token(char c, FILE *fp) {
     return create_token(INTEGER, value, add);
 }
 
-Token* scan_character_token(FILE *file_pointer) { //TODO: Check, \'s
-    Address address = *current_address;
-    int c = get_next_ascii(file_pointer);
-    if (c == '\'') {
-        return create_token(CHARACTER, "", address);
-    } else if (c == '\\') {
-        
-    } else {
-        char value[2] = {c, 0};
-        return create_token(CHARACTER, value, address);
+Token* create_string_or_char_token(char sign, char val[], Address add) {
+    if (sign == '"') {
+        return create_token(STRING, val, add);
     }
-    return NULL;
+    return create_token(CHARACTER, val, add);
 }
 
-Token* scan_string_token(FILE *file_pointer) { //TODO: Check
-    int c = get_next_ascii(file_pointer);
-    Address address = *current_address;
+Token* scan_string_or_char_token(char sign, FILE *fp) { //TODO: \0
+    int c = get_next_ascii(fp);
+    Address add = *current_address;
     char value[MAX_N];
     int i;
-    for (i = 0; c != '"'; i++) {
+    for (i = 0; c != sign || (i > 0 && value[i - 1] == '\\'); i++) {
         value[i] = c;
-        c = get_next_ascii(file_pointer);
+        c = get_next_ascii(fp);
     }
     value[i] = 0;
-    return create_token(STRING, value, address);
+    return create_string_or_char_token(sign, value, add);
 }
 
 //MARK: Scanning
 void scan_tokens(char file_name[]) {
     FILE *fp = open_file(file_name, "r");
+    current_address = create_address(1, 1);
     Token *t = scan_next_token(fp);
     while (t != NULL) {
         print_token(t);
@@ -330,11 +323,8 @@ Token* scan_next_token(FILE *fp) {
     if (c == '<' || c == '>' || c == '!' || c == '=') {
         return scan_prefixable_operator_token(c, '=', fp);
     }
-    if (c == '\'') {
-        return scan_character_token(fp);
-    }
-    if (c == '"') {
-        return scan_string_token(fp);
+    if (c == '\'' || c == '"') {
+        return scan_string_or_char_token(c, fp);
     }
     if (isdigit(c)) {
         return scan_integer_token(c, fp);
