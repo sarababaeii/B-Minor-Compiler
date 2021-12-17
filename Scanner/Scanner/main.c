@@ -17,8 +17,8 @@ const char KEYWORDS[KYEWORDS_NUM][MAX_N] = {
     "array", "boolean", "char", "else", "false", "for", "function", "if",
     "integer", "print", "return", "string", "true", "void", "while"
 };
-char input_file[] = "/Users/mackbook/Desktop/Sara/Study/Programming/CS 97/1400-1/Compiler/Homework/HW-02/input1.txt";
-char output_file[] = "/Users/mackbook/Desktop/Sara/Study/Programming/CS 97/1400-1/Compiler/Homework/HW-02/ouput1.txt";
+//char input_file[MAX_N];// = "/Users/mackbook/Desktop/Sara/Study/Programming/CS 97/1400-1/Compiler/Homework/HW-02/input1.txt";
+//char output_file[MAX_N];// = "/Users/mackbook/Desktop/Sara/Study/Programming/CS 97/1400-1/Compiler/Homework/HW-02/ouput1.txt";
 
 //MARK: Type Definitions
 typedef enum {
@@ -52,7 +52,6 @@ int last_column_number = 0;
 
 //MARK: Function Prototypes
 Address* create_address(int line, int column);
-TokenArray* scan_tokens(char*, char*);
 Token* scan_next_token(FILE*);
 Token* scan_integer_token(char, FILE*);
 Token* scan_string_or_char_token(char, FILE*);
@@ -65,6 +64,7 @@ Token* create_keyword_or_identifier_token(char*, Address);
 Token* create_string_or_char_token(char, char*, Address);
 Token get_token_from_array(TokenArray*, int);
 FILE* open_file(char*, char*);
+void scan_tokens(char*, char*);
 void insert_to_token_array(TokenArray*, Token);
 void free_token_array(TokenArray*);
 void print_token(Token*, FILE*);
@@ -74,25 +74,26 @@ void skip_comments(FILE*);
 void skip_c_style_comment(int, FILE*);
 void skip_cpp_style_comment(int, FILE*);
 void put_back_last_ascii(int, FILE*);
+void input(char*, char*);
 int get_next_ascii(FILE*);
 int is_keyword(char*);
 int addresses_are_equal(Address*, Address*);
 char* get_token_description(TokenType);
 
-void print_token_stndrd(Token t) {
-    printf("Token: (\n\ttype: %s, \n\tvalue: %s, \n\tline: %d, col: %d)\n",
-           get_token_description(t.type), t.value, t.address.line, t.address.column);
-}
-
 //MARK: Main
 int main(int argc, const char * argv[]) {
-    printf("Hello, World!\n");
-    TokenArray *tokens;
-    tokens = scan_tokens(input_file, output_file);
-    for (int i = 0; i < tokens->used; i++) {
-        print_token_stndrd(get_token_from_array(tokens, i));
-    }
+    char input_file[MAX_N], output_file[MAX_N];
+    input(input_file, output_file);
+    scan_tokens(input_file, output_file);
+    printf("Check tokens in output file.\n");
     return 0;
+}
+
+void input(char* in_f, char* out_f) {
+    printf("Enter input file address (should be less than 500 characters):\n");
+    scanf("%[^\n]%*c", in_f);
+    printf("Enter output file address (should be less than 500 characters):\n");
+    scanf("%[^\n]%*c", out_f);
 }
 
 //MARK: File Management
@@ -343,7 +344,7 @@ Token* scan_string_or_char_token(char sign, FILE *fp) { //TODO: \0
 }
 
 //MARK: Scanning
-TokenArray* scan_tokens(char input_file_name[], char output_file_name[]) {
+void scan_tokens(char input_file_name[], char output_file_name[]) {
     FILE *fp_in = open_file(input_file_name, "r");
     FILE *fp_out = open_file(output_file_name, "w");
     TokenArray *a = create_token_array(10);
@@ -356,7 +357,6 @@ TokenArray* scan_tokens(char input_file_name[], char output_file_name[]) {
     }
     fclose(fp_in);
     fclose(fp_out);
-    return a;
 }
 
 Token* scan_next_token(FILE *fp) {
